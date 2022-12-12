@@ -7,6 +7,8 @@ import os
 import copy 
 import math
 import numpy as np
+import lkh
+import tsplib95
 
 def read_data(ins):
     dist = pd.read_csv(f"Instancias/Dist/{ins}.txt",sep="\t",header=None).to_numpy()
@@ -38,13 +40,6 @@ def checker(solucion):
     return True
 
 def costo(vector_sol,obj):
-    #    valores = [0 for i in range(m)]
-    # for i in range(m):
-    #     valores[i] = costo_parcial(vector_sol[i])
-        # valores[i] = distancia[0][vector_sol[i][0]] + distancia[0][vector_sol[i][-1]] #Se suma el valor desde y hasta el nodo inicial
-        
-        # for j in range(len(vector_sol[i])-1):
-        #     valores[i] += distancia[vector_sol[i][j]][vector_sol[i][j+1]]
     if len(vector_sol)<3:
         print("hola")
     valores = [costo_parcial(vector_sol[i]) for i in range(m)]
@@ -63,13 +58,15 @@ def costo_parcial(ruta):
     return valor
 
 def graficar(solucion,obj="minmax"):
-    colores = {0:"blue",1:"red",2:"green",3:"yellow",4:"black",5:"purple"}
+    #solucion = [[80, 33, 10, 89, 96, 97, 48, 69, 88, 22, 37, 7, 68, 15, 84, 58, 2, 42, 38, 78, 12], [72, 3, 43, 52, 4, 54, 25, 86, 91, 47, 1, 99, 29, 34, 50, 18, 36, 61, 59, 92, 70], [87, 40, 90, 53, 62, 39, 82, 5, 8, 9, 94, 55, 67, 32, 98, 79, 45, 51, 65], [26, 23, 83, 14, 77, 44, 30, 56, 71, 60, 73, 6, 74, 66, 35, 28, 57, 21, 41, 16, 93, 31], [76, 63, 17, 24, 19, 20, 27, 11, 46, 81, 13, 64, 85, 95, 75, 49]]
+
+    colores = {0:"blue",1:"red",2:"green",3:"brown",4:"black",5:"purple"}
     for i in range(len(solucion)):
         for j in range(len(solucion[i])):
             x = coords[solucion[i][j]]["x"]
             y = coords[solucion[i][j]]["y"]
             plt.scatter(x,y,c = colores[i],s=5)
-            plt.annotate(f"{solucion[i][j]}",(x,y))
+            #plt.annotate(f"{solucion[i][j]}",(x,y))
 
     for i in range(len(solucion)):    
         for j in range(len(solucion[i])-1):
@@ -82,11 +79,11 @@ def graficar(solucion,obj="minmax"):
         yi = [coords[0]["y"],coords[solucion[i][0] ]["y"]]
         xf = [coords[solucion[i][-1]]["x"],coords[0]["x"]]
         yf = [coords[solucion[i][-1]]["y"],coords[0]["y"]]
-        plt.plot(xi,yi , c = colores[i])
+        plt.plot(xi,yi , c = colores[i],label=f"Ruta {i+1}:{round(costo_parcial(solucion[i]),1)}")
         plt.plot(xf,yf , c = colores[i])
     
-
-    plt.title(f"{obj}: {'%.2f'%costo(solucion,obj)}\n{solucion}")
+    plt.legend(loc='upper center', bbox_to_anchor=(0.5, -0.05) , ncol=3)
+    plt.title(f"{obj}: {'%.2f'%costo(solucion,obj)}")
     #plt.savefig(f"{ins}_{m}")
     plt.show()
 
@@ -180,16 +177,13 @@ def random_solution(n,m):
     return solucion
 
 def generar_solucion():
-    # mayor = "mio" if costo(solucion_paper(),tipo) > costo(m_vecino_mas_cercano(),tipo) else "paper"
-    # print("{:<5}{:<3}{:<11}{:<15}{:<7}{:<6}".format(ins,m,"%.2f"%costo(solucion_paper(),tipo),"%.3f"%costo(m_vecino_mas_cercano(),tipo),mayor,tipo))
-
     #solucion = solucion_paper()
     #solucion = random_solution()
     solucion = m_vecino_mas_cercano()
 
     return solucion
 
-def perturbacion1(sol):
+def shaking(sol):
     """
     Mueve un nodo aleatorio de una ruta aleatoria
     a una posición aleatoria de otra ruta aleatoria.
@@ -210,7 +204,7 @@ def perturbacion1(sol):
     sol[t].insert(j,i)
     return sol
 
-def perturbacion2(solucion):
+def perturbacion(solucion):
     """
     Perturba entre 1 y m rutas.
     En cada perturbación se busca una ruta aleatoria que tenga
@@ -284,7 +278,7 @@ def two_opt_move(solucion):
 
 def two_point_move(solucion):
     """
-    Inserta un nodo en todas las posibles posiciones de otras rutas
+    Intercambio un nodo con todos los nodos de las otras rutas
     Se queda con el mejor vecino
     """
     if tipo == "minsum":
@@ -296,11 +290,11 @@ def two_point_move(solucion):
     mejor_costo = costo(solucion,tipo)
     ruta_original = copy.deepcopy(solucion)
     candidato = copy.deepcopy(solucion)
-    for i in solucion[v]:
+    for i in range(len(solucion[v])):
         for v2 in range(m):
             if v2 != v:
-                for j in range(len(solucion[v2])+1):
-                    candidato[v] , candidato[v2] = candidato[v2], candidato[v]
+                for j in range(len(solucion[v2])):
+                    candidato[v][i] , candidato[v2][j] = candidato[v2][j], candidato[v][i]
                     costo_cambio = costo(candidato,tipo)
                     if costo_cambio < mejor_costo:
                         mejor_costo = costo_cambio
@@ -308,49 +302,169 @@ def two_point_move(solucion):
                         return 
                     candidato = copy.deepcopy(ruta_original)
 
+def or_opt2_move(solucion):
+    """
+    Inserta dos nodos adyacentes en todas las posibles posiciones de otras rutas
+    Se queda con el mejor vecino
+    """
+    if tipo == "minsum":
+        v = random.randint(0,m-1)
+    else:
+        #v = max([(len(solucion[i]),i) for i in range(m)] , key=lambda x:x[0] )[1]
+        v = max([(costo_parcial(solucion[i]),i) for i in range(m)],key=lambda x:x[0])[1]
+    mejor_costo = costo(solucion,tipo)
+    
+    ruta_original = copy.deepcopy(solucion)
+    candidato = copy.deepcopy(solucion)
+    for i in range(len(solucion[v])):
+        for v2 in range(m):
+            if v2 != v:
+                for j in range(len(solucion[v2])+1):
+                    if len(candidato[v])>2 and len(solucion[v])>i+1:
+                        candidato[v].remove(solucion[v][i])
+                        candidato[v].remove(solucion[v][i+1])
+                        candidato[v2].insert(j,solucion[v][i+1])
+                        candidato[v2].insert(j,solucion[v][i])
+                        costo_cambio = costo(candidato,tipo)
+                        if costo_cambio < mejor_costo:
+                            mejor_costo = costo_cambio
+                            solucion = copy.deepcopy(candidato)
+                            #return
+                        candidato = copy.deepcopy(ruta_original)
+
+def or_opt3_move(solucion):
+    """
+    Inserta tres nodos adyacentes en todas las posibles posiciones de otras rutas
+    Se queda con el mejor vecino
+    """
+    if tipo == "minsum":
+        v = random.randint(0,m-1)
+    else:
+        #v = max([(len(solucion[i]),i) for i in range(m)] , key=lambda x:x[0] )[1]
+        v = max([(costo_parcial(solucion[i]),i) for i in range(m)],key=lambda x:x[0])[1]
+    mejor_costo = costo(solucion,tipo)
+    
+    ruta_original = copy.deepcopy(solucion)
+    candidato = copy.deepcopy(solucion)
+    for i in range(len(solucion[v])):
+        for v2 in range(m):
+            if v2 != v:
+                for j in range(len(solucion[v2])+1):
+                    if len(candidato[v])>2 and len(solucion[v])>i+3:
+                        candidato[v].remove(solucion[v][i])
+                        candidato[v].remove(solucion[v][i+1])
+                        candidato[v].remove(solucion[v][i+2])
+                        candidato[v2].insert(j,solucion[v][i+2])
+                        candidato[v2].insert(j,solucion[v][i+1])
+                        candidato[v2].insert(j,solucion[v][i])
+                        costo_cambio = costo(candidato,tipo)
+                        if costo_cambio < mejor_costo:
+                            mejor_costo = costo_cambio
+                            solucion = copy.deepcopy(candidato)
+                            return
+                        candidato = copy.deepcopy(ruta_original)
+
 def three_point_move(solucion):
-    pass
+    """
+    Intercambia dos nodos de una ruta con uno de otra
+    Se queda con el mejor vecino
+    """
+    if tipo == "minsum":
+        v = random.randint(0,m-1)
+    else:
+        #v = max([(len(solucion[i]),i) for i in range(m)] , key=lambda x:x[0] )[1]
+        v = max([(costo_parcial(solucion[i]),i) for i in range(m)],key=lambda x:x[0])[1]
+    mejor_costo = costo(solucion,tipo)
+    
+    ruta_original = copy.deepcopy(solucion)
+    candidato = copy.deepcopy(solucion)
+    for i in range(len(solucion[v])-1):
+        for v2 in range(m):
+            if v2 != v:
+                for j in range(len(solucion[v2])-1):
+                        par1 = candidato[v].pop(i)
+                        par2 = candidato[v].pop(i)
+                        solo = candidato[v2].pop(j)
+                        candidato[v2].insert(j,par2)
+                        candidato[v2].insert(j,par1)
+                        candidato[v].insert(i,solo)
+                        costo_cambio = costo(candidato,tipo)
+                        if costo_cambio < mejor_costo:
+                            mejor_costo = costo_cambio
+                            solucion = copy.deepcopy(candidato)
+                            return
+                        candidato = copy.deepcopy(ruta_original)
+
+def transformar_txt(ciudades):
+    matriz_distancia = pd.DataFrame([[distancia[i][j] if i!=j else 0 for i in ciudades ] for j in ciudades])
+    n = len(ciudades)
+    string_problem  = "NAME: prueba"+str(n)+"\n"
+    string_problem += "TYPE: TSP\n"
+    string_problem += f"COMMENT: {n} cities in Bavaria, street distances (Groetschel,Juenger,Reinelt)\n"
+    string_problem += f"DIMENSION: {n}\n"
+    string_problem += f"EDGE_WEIGHT_TYPE: EXPLICIT\nEDGE_WEIGHT_FORMAT: FULL_MATRIX\nDISPLAY_DATA_TYPE: TWOD_DISPLAY\nEDGE_WEIGHT_SECTION\n"
+    string_problem += matriz_distancia.replace(0,10000000).to_csv(header=None,index=False).replace(","," ")
+    return string_problem
+
+def solve_lkh(solucion):
+    if tipo == "minsum":
+        v = random.randint(0,m-1)
+    else:
+        #v = max([(len(solucion[i]),i) for i in range(m)] , key=lambda x:x[0] )[1]
+        v = max([(costo_parcial(solucion[i]),i) for i in range(m)],key=lambda x:x[0])[1]
+
+    if len(solucion[v])<2:
+        return
+
+    ciudades = copy.deepcopy(solucion[v])
+    ciudades.insert(0,0)
+    string_problem = transformar_txt(ciudades)
+    problem = tsplib95.parse(string_problem)
+    solver_path = 'Codigos/LKH-3.0.7/LKH'
+    ciudad = lkh.solve(solver_path, problem=problem, max_trials=1000, runs=1)[0]
+    ciudad = [ciudades[i-1] for i in ciudad]
+    cero = ciudad.index(0)
+    ciudad = ciudad[cero+1:]+ciudad[:cero]
+    solucion[v]=ciudad.copy()
+
+
 
 def SA(seed,tipo):
     random.seed(seed)
     
     inicio = time.time()
     s = generar_solucion()
-    #s = random_solution(n,m)
-    costoActual = costo(s,tipo)
+    costoActual = costo(s,tipo) 
 
     s_mejor = copy.deepcopy(s)
     costoMejor = costoActual
-
     #Listas para graficar
     lista_costos = []
     lista_temperaturas = []
 
-    iterMax = 3000
-    temperatura = 100
-    temperatura_final = 0.00001
-    #alfa = (-math.log(temperatura)/math.log(temperatura_final))**(1/(iterMax-1))
-    alfa = 0.9995
-    #print(0,"%.2f"%costoMejor)
-    # #graficar(s_b,tipo)
 
-    max_vecinos = 5
+    temperatura = 100
+
+    alfa = 0.9995
+
+
+    max_vecinos = 1
     iteracion = 0
-    #graficar(s_mejor,tipo)
-    #while temperatura > temperatura_final and iteracion < iterMax:
+
+
     while time.time()-inicio < n:
         for i in range(max_vecinos):
             s_candidato = copy.deepcopy(s)
+            
+            # #EXCEL1 
             aleatorio = random.uniform(0,1)
-            perturbacion1(s_candidato)
+            shaking(s_candidato)
             if aleatorio<2/3:
                 two_point_move(s_candidato)
             else:
-                two_opt_move(s_candidato)
-            #bl = one_point_move if random.uniform(0,1)<0.5 else two_opt_move
-            #bl(s_candidato)
-            #two_opt_move(s_candidato)
-
+                three_point_move(s_candidato)
+            two_opt_move(s_candidato)
+            
             costoCandidato = costo(s_candidato,tipo)
             
             if costoCandidato < costoActual:
@@ -362,36 +476,28 @@ def SA(seed,tipo):
             elif random.uniform(0, 1) < math.exp(-abs(costoCandidato - costoActual) / temperatura):
                 costoActual, s = costoCandidato, copy.deepcopy(s_candidato)
         #print(iteracion, "%.2f"%costoMejor)#,s_mejor)
-        print(f"{ins} {m} {iteracion} {round(costoMejor,2)} {round(time.time()- inicio,2)}",end="\r")
-        if iteracion in [3000,6000,9000]:
+        print("{:<4}{:<4}{:<3}{:<7}{:<10}{:<10}{:<10}".format(ins,seed,m,iteracion,round(costoMejor,2),round(time.time()- inicio,2),round(temperatura,2)),end="\r")
+        if temperatura<1:
             temperatura = 100
         lista_costos.append(costoMejor)
         lista_temperaturas.append(temperatura)
         
-
-        
         temperatura *= alfa
         iteracion +=1
-    #print(ins,m,"%.2f"%costoMejor,"%.2f"%temperatura,"%.2f"%(time.time()-inicio))
+    
+    #print("{:<8}{:<4}{:<4}{:<3}{:<10}{:<10}{:<10}".format(tipo,ins,seed,m,round(costoMejor,2),round(time.time()- inicio,2),round(temperatura,2)),file=open("salida.txt","a"))
+    #print("{:<8}{:<4}{:<4}{:<3}{:<10}{:<10}{:<10}".format(tipo,ins,seed,m,round(costoMejor,2),round(time.time()- inicio,2),round(temperatura,2)))
+    
     print()
-    # try:
-    #     #print("holac")
-    #     graficar(s_mejor,tipo)
-    #     #print(s_mejor)
-    # except:
-    #     pass
-    #input_graficar = input("Graficar temperatura y costos? (Si/No): ").lower()
     input_graficar = "No"
-
     if input_graficar == "Si":
         graficar_temperatura_costos(lista_costos,lista_temperaturas)
+        graficar(s_mejor,tipo)
 
-instancias = ["11a","11b","12a","12b","16","51","100","128","150"]#["100","128","150"]
-ms = {"11a":[3],"11b":[3],"12a":[3],"12b":[3],"16":[3],"128":[10,15,30],"51":[3,5,10,20],"100":[3,5,10,20],"150":[3,5,10,20]}
+instancias = [ "11a","11b","12a","12b","16","51","100","128","150"]#["100","128","150"]
+ms = {"11a":[3],"11b":[3],"12a":[3],"12b":[3],"16":[3],"128":[10,15,30],"51":[3,5,10],"100":[3,5,10,20],"150":[3,5,10,20,30]}#
 instancia = "11a"
-tipos = ["minmax","minsum"][::-1]
-
-#sol_inicial = [[1,2,3],[4,5,6],[7,8,9,10]]
+tipos = ["minmax","minsum"]#[::-1]
 
 for tipo in tipos:
     for ins in instancias:
@@ -399,15 +505,7 @@ for tipo in tipos:
         n = len(distancia)
         for ma in ms[ins]:
             m = ma
-            for seed in range(1):
+            for seed in range(10):
                 SA(seed,tipo)
-    print("")
-
-
-# sol_inicial = [[80],
-#                [49],
-#                [26],
-#                [23,87,78,12],
-#                [i for i in range(1,100) if i not in [80,49,26,23,87,78,12] ]] 
-#print(checker(sol_inicial))
+                print()
 
